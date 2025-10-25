@@ -1,0 +1,142 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id String @id @unique
+
+  firstName String
+  lastName  String
+
+  username String @unique
+  photoUrl String
+
+  inviteCode String @unique
+
+  chatId String? @unique
+
+  notificationSettings NotificationSettings?
+
+  goals        Goal[]
+  refreshToken RefreshToken?
+  weeklyReports WeeklyReport[]
+
+  weekReport String?
+
+  createdAt DateTime @default(dbgenerated("now()"))
+  updatedAt DateTime @default(dbgenerated("now()")) @updatedAt
+}
+
+model Goal {
+  id Int @id @unique @default(autoincrement())
+
+  user   User   @relation(references: [id], fields: [userId])
+  userId String
+
+  subGoals SubGoal[]
+
+  title        String
+  urgencyLevel URGENCY_LEVEL
+  specific     String
+  measurable   String
+  attainable   String
+  relevant     String
+  description  String
+  award        String
+  deadline     DateTime
+  imageUrl     String?       @default("https://celiscope.ru/placeholder-image.jpg")
+  privacy      PRIVACY       @default(PRIVATE)
+  isCompleted  Boolean       @default(false)
+
+  completedAt DateTime?
+  createdAt   DateTime  @default(dbgenerated("now()"))
+  updatedAt   DateTime  @default(dbgenerated("now()")) @updatedAt
+}
+
+model Friendship {
+  id Int @id @default(autoincrement())
+
+  firstUserId  String
+  secondUserId String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([firstUserId, secondUserId])
+  @@index([firstUserId])
+  @@index([secondUserId])
+}
+
+model SubGoal {
+  id          Int      @id @default(autoincrement())
+  description String
+  deadline    DateTime
+  isCompleted Boolean  @default(false)
+  completedAt DateTime?
+  goal        Goal     @relation(fields: [goalId], references: [id])
+  goalId      Int
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model RefreshToken {
+  id Int @id @unique @default(autoincrement())
+
+  token String @unique
+
+  user   User   @relation(fields: [userId], references: [id])
+  userId String @unique
+
+  createdAt DateTime @default(dbgenerated("now()"))
+  updatedAt DateTime @default(dbgenerated("now()")) @updatedAt
+}
+
+model NotificationSettings {
+  id Int @id @unique @default(autoincrement())
+
+  user   User   @relation(fields: [userId], references: [id])
+  userId String @unique
+
+  todaySubGoalsNotifications       Boolean @default(true)
+  tomorrowSubGoalNotifications     Boolean @default(true)
+  monthlyGoalDeadlineNotifications Boolean @default(true)
+  customNotifications              Boolean @default(true)
+
+  todaySubGoalsNotificationsTime       String @default("09:00")
+  tomorrowSubGoalNotificationsTime     String @default("09:00")
+  monthlyGoalDeadlineNotificationsTime String @default("09:00")
+  customNotificationsTime              String @default("09:00")
+
+  createdAt DateTime @default(dbgenerated("now()"))
+  updatedAt DateTime @default(dbgenerated("now()")) @updatedAt
+}
+
+model WeeklyReport {
+  id Int @id @default(autoincrement())
+
+  user   User   @relation(fields: [userId], references: [id])
+  userId String
+
+  text String
+  weekStart DateTime
+  createdAt DateTime @default(dbgenerated("now()"))
+  updatedAt DateTime @default(dbgenerated("now()")) @updatedAt
+
+  @@unique([userId, weekStart])
+}
+
+enum URGENCY_LEVEL {
+  LOW
+  AVERAGE
+  HIGH
+}
+
+enum PRIVACY {
+  PRIVATE
+  PUBLIC
+}
