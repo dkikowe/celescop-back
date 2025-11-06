@@ -21,10 +21,11 @@ class GoalService {
 			imageUrl?: string
 			subGoals?: { description: string; deadline: Date }[]
 			source?: string // Добавляем поле source для валидации
+			shortDescription?: string // Добавляем для валидации
 		}
 	) {
 		const deadline = getDeadline(data.deadline)
-		const { subGoals, source, ...dataWithoutSubGoals } = data
+		const { subGoals, source, shortDescription, ...dataWithoutSubGoals } = data
 
 		delete dataWithoutSubGoals.deadline
 
