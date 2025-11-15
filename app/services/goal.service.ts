@@ -28,6 +28,21 @@ class GoalService {
 		const { subGoals, source, shortDescription, ...dataWithoutSubGoals } = data
 
 		delete dataWithoutSubGoals.deadline
+		// Явно удаляем shortDescription и source, если они вдруг попали (TypeScript не видит их в типе, но они могут быть в runtime)
+		if ('shortDescription' in dataWithoutSubGoals) {
+			delete (dataWithoutSubGoals as any).shortDescription
+		}
+		if ('source' in dataWithoutSubGoals) {
+			delete (dataWithoutSubGoals as any).source
+		}
+
+		console.log('[GoalService.createGoal] Данные для Prisma:', {
+			userId,
+			deadline,
+			keys: Object.keys(dataWithoutSubGoals),
+			hasShortDescription: 'shortDescription' in dataWithoutSubGoals,
+			hasSource: 'source' in dataWithoutSubGoals
+		})
 
 		const goal = await prisma.goal.create({
 			data: { userId, deadline, ...dataWithoutSubGoals }
