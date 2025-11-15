@@ -149,20 +149,78 @@ router.post(
 	upload.single('image'),
 	async (req: Request, res: Response, next: NextFunction) => {
 		try {
+			console.log('[create-from-template] Начало обработки запроса')
+			console.log('[create-from-template] File uploaded:', !!req.file)
+			console.log('[create-from-template] Body keys:', Object.keys(req.body || {}))
+
 			if (!req.file) {
-				console.log('No file uploaded')
+				console.log('[create-from-template] No file uploaded')
 			}
 
 			const { info } = req.body
+			console.log('[create-from-template] Info received:', info ? 'yes' : 'no', info?.substring(0, 200))
 
-			const parsed = JSON.parse(info)
+			if (!info) {
+				console.error('[create-from-template] ERROR: info отсутствует в body')
+				throw new ApiError(400, 'Поле info обязательно')
+			}
+
+			let parsed
+			try {
+				parsed = JSON.parse(info)
+				console.log('[create-from-template] JSON parsed successfully')
+				console.log('[create-from-template] Parsed data keys:', Object.keys(parsed || {}))
+				console.log('[create-from-template] Title:', parsed?.title)
+				console.log('[create-from-template] Has description:', !!parsed?.description)
+				console.log('[create-from-template] Has shortDescription:', !!parsed?.shortDescription)
+				console.log('[create-from-template] Has subGoals:', Array.isArray(parsed?.subGoals), parsed?.subGoals?.length)
+			} catch (parseError: any) {
+				console.error('[create-from-template] ERROR: JSON parse failed:', parseError.message)
+				console.error('[create-from-template] Info content:', info)
+				throw new ApiError(400, `Ошибка парсинга JSON: ${parseError.message}`)
+			}
+
+			console.log('[create-from-template] Начало валидации схемы')
 			const { value: data, error } = goalCreateFromTemplateSchema.validate(parsed, {
 				abortEarly: false,
 				allowUnknown: true,
 				stripUnknown: true
 			})
 
-			if (error) throw new ApiError(400, error.message)
+			if (error) {
+				console.error('[create-from-template] ERROR: Валидация не прошла:', error.message)
+				console.error('[create-from-template] Validation details:', JSON.stringify(error.details, null, 2))
+				throw new ApiError(400, error.message)
+			}
+			console.log('[create-from-template] Валидация прошла успешно')
+
+			// Если есть shortDescription и нет description, генерируем описание через AI
+			if (data.shortDescription && !data.description) {
+				console.log('[create-from-template] Генерация описания через AI')
+				try {
+					const aiResult = await aiService.generateGoalFromTemplate({
+						template: data.title,
+						shortDescription: data.shortDescription,
+						deadline: data.deadline,
+						context: data.shortDescription
+					})
+					data.description = aiResult.description
+					console.log('[create-from-template] AI описание сгенерировано, длина:', data.description?.length)
+				} catch (aiError: any) {
+					console.error('[create-from-template] AI generation failed:', aiError.message)
+					console.error('[create-from-template] AI error stack:', aiError.stack)
+					// Если AI не сработал, используем shortDescription как описание
+					data.description = data.shortDescription
+					console.log('[create-from-template] Используем shortDescription как описание')
+				}
+			}
+
+			// Проверяем, что description обязательно есть перед созданием
+			if (!data.description) {
+				console.error('[create-from-template] ERROR: description отсутствует после всех обработок')
+				throw new ApiError(400, 'Описание цели обязательно. Укажите description или shortDescription')
+			}
+			console.log('[create-from-template] Description готово, длина:', data.description.length)
 
 			// Заполняем обязательные поля Prisma дефолтами, если не пришли
 			data.urgencyLevel = data.urgencyLevel || 'LOW'
@@ -172,33 +230,70 @@ router.post(
 			data.attainable = data.attainable || '-'
 			data.relevant = data.relevant || '-'
 			data.award = data.award || '-'
+			console.log('[create-from-template] Обязательные поля заполнены')
 
 			// Преобразуем подцели, если есть, чтобы deadline был Date
 			if (Array.isArray(data.subGoals)) {
+				console.log('[create-from-template] Обработка подцелей, количество:', data.subGoals.length)
 				data.subGoals = data.subGoals.map((sg: any) => ({
 					description: sg.description,
 					deadline: new Date(sg.deadline)
 				}))
+				console.log('[create-from-template] Подцели обработаны')
 			}
 
+			console.log('[create-from-template] Проверка токена')
 			const token = req.headers.authorization?.split(' ')[1]
+			if (!token) {
+				console.error('[create-from-template] ERROR: Токен отсутствует')
+				throw new ApiError(401, 'Токен не предоставлен')
+			}
+
 			const user: User = tokenService.validateAccess(token) as User
+			console.log('[create-from-template] Пользователь авторизован, ID:', user.id)
 
 			if (req.file) {
-				const fileBuffer = await processImageBuffer(req.file.buffer, req.file.mimetype)
-				const imageUrl = await uploadFile(fileBuffer, `goal-${Date.now()}.jpg`)
-				data.imageUrl = imageUrl
+				console.log('[create-from-template] Обработка изображения')
+				try {
+					const fileBuffer = await processImageBuffer(req.file.buffer, req.file.mimetype)
+					const imageUrl = await uploadFile(fileBuffer, `goal-${Date.now()}.jpg`)
+					data.imageUrl = imageUrl
+					console.log('[create-from-template] Изображение загружено, URL:', imageUrl)
+				} catch (imageError: any) {
+					console.error('[create-from-template] ERROR: Ошибка обработки изображения:', imageError.message)
+					console.error('[create-from-template] Image error stack:', imageError.stack)
+					throw imageError
+				}
 			} else if (!data.imageUrl) {
 				data.imageUrl = 'https://celiscope.ru/placeholder-image.jpg'
+				console.log('[create-from-template] Используется изображение по умолчанию')
 			}
 
-			const goal = await goalService.createGoal(user.id, data)
+			console.log('[create-from-template] Создание цели в БД')
+			console.log('[create-from-template] Данные для создания:', {
+				userId: user.id,
+				title: data.title,
+				hasDescription: !!data.description,
+				descriptionLength: data.description?.length,
+				deadline: data.deadline,
+				hasSubGoals: Array.isArray(data.subGoals),
+				subGoalsCount: data.subGoals?.length || 0
+			})
 
-    res.status(200).json(goal)
-  } catch (err) {
-    next(err)
-  }
-}
+			const goal = await goalService.createGoal(user.id, data)
+			console.log('[create-from-template] Цель создана успешно, ID:', goal.id)
+
+			res.status(200).json(goal)
+		} catch (err: any) {
+			console.error('[create-from-template] ERROR: Исключение в обработчике')
+			console.error('[create-from-template] Error message:', err.message)
+			console.error('[create-from-template] Error stack:', err.stack)
+			if (err instanceof ApiError) {
+				console.error('[create-from-template] ApiError status:', err.status)
+			}
+			next(err)
+		}
+	}
 )
 
 

@@ -13,11 +13,20 @@ export const goalCreateFromTemplateSchema = Joi.object({
     'string.min': 'Краткое описание не может быть пустым',
     'string.max': 'Краткое описание должно содержать не более 200 символов'
   }),
-  description: Joi.string().required().min(1).max(2000).messages({
-    'string.empty': 'Описание цели не может быть пустым',
-    'string.min': 'Описание цели не может быть пустым',
-    'string.max': 'Описание цели должно содержать не более 2000 символов'
-  }),
+  description: Joi.string()
+    .when('shortDescription', {
+      is: Joi.exist(),
+      then: Joi.optional(),
+      otherwise: Joi.required()
+    })
+    .min(1)
+    .max(2000)
+    .messages({
+      'string.empty': 'Описание цели не может быть пустым',
+      'string.min': 'Описание цели не может быть пустым',
+      'string.max': 'Описание цели должно содержать не более 2000 символов',
+      'any.required': 'Описание цели обязательно, если не указано краткое описание'
+    }),
   // По умолчанию допускаем отсутствие, но можно переопределить
   urgencyLevel: Joi.string().valid('LOW', 'AVERAGE', 'HIGH').optional(),
   privacy: Joi.string().valid('PRIVATE', 'PUBLIC').optional(),
