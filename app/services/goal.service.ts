@@ -25,27 +25,39 @@ class GoalService {
 		}
 	) {
 		const deadline = getDeadline(data.deadline)
-		const { subGoals, source, shortDescription, ...dataWithoutSubGoals } = data
+		const { subGoals, source, shortDescription, deadline: _, ...rest } = data
 
-		delete dataWithoutSubGoals.deadline
-		// Явно удаляем shortDescription и source, если они вдруг попали (TypeScript не видит их в типе, но они могут быть в runtime)
-		if ('shortDescription' in dataWithoutSubGoals) {
-			delete (dataWithoutSubGoals as any).shortDescription
+		// Создаём объект только с нужными полями для Prisma, явно исключая shortDescription и source
+		const prismaData: any = {
+			userId,
+			deadline,
+			title: data.title,
+			urgencyLevel: data.urgencyLevel,
+			specific: data.specific,
+			measurable: data.measurable,
+			attainable: data.attainable,
+			relevant: data.relevant,
+			description: data.description,
+			award: data.award,
+			privacy: data.privacy
 		}
-		if ('source' in dataWithoutSubGoals) {
-			delete (dataWithoutSubGoals as any).source
+
+		// Добавляем imageUrl только если он есть
+		if (data.imageUrl) {
+			prismaData.imageUrl = data.imageUrl
 		}
 
 		console.log('[GoalService.createGoal] Данные для Prisma:', {
 			userId,
 			deadline,
-			keys: Object.keys(dataWithoutSubGoals),
-			hasShortDescription: 'shortDescription' in dataWithoutSubGoals,
-			hasSource: 'source' in dataWithoutSubGoals
+			keys: Object.keys(prismaData),
+			hasShortDescription: 'shortDescription' in prismaData,
+			hasSource: 'source' in prismaData,
+			title: prismaData.title
 		})
 
 		const goal = await prisma.goal.create({
-			data: { userId, deadline, ...dataWithoutSubGoals }
+			data: prismaData
 		})
 
 		if (subGoals) {
