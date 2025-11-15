@@ -28,11 +28,26 @@ class FriendshipService {
 	}
 
 	async removeFriendship(userId: string, friendId: string) {
-		const friendship = await prisma.friendship.delete({
+		// Сначала найдем дружбу, так как она может быть в любом направлении
+		const friendship = await prisma.friendship.findFirst({
+			where: {
+				OR: [
+					{ firstUserId: userId, secondUserId: friendId },
+					{ firstUserId: friendId, secondUserId: userId }
+				]
+			}
+		})
+
+		if (!friendship) {
+			throw new ApiError(404, 'Дружба не найдена')
+		}
+
+		// Удаляем найденную дружбу
+		await prisma.friendship.delete({
 			where: {
 				firstUserId_secondUserId: {
-					firstUserId: userId,
-					secondUserId: friendId
+					firstUserId: friendship.firstUserId,
+					secondUserId: friendship.secondUserId
 				}
 			}
 		})

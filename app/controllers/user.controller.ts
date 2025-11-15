@@ -68,5 +68,19 @@ router.get(`/:id`, async (req: Request, res: Response, next: NextFunction) => {
 	}
 })
 
+router.get(
+	`/by-invite/:inviteCode`,
+	authMiddleware,
+	async (req: Request, res: Response, next: NextFunction) => {
+		try {
+			const inviteCode = req.params.inviteCode
+			const userData = await userService.getUserByInviteCode(inviteCode)
+
+			res.status(200).json(userData)
+		} catch (err) {
+			next(err)
+		}
+	}
+)
 
 export const userController = router

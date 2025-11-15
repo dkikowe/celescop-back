@@ -23,6 +23,64 @@ const upload = multer({
 	}
 })
 
+// Вспомогательная функция для обработки изображений
+async function processImageBuffer(fileBuffer: Buffer, mimetype?: string): Promise<Buffer> {
+	let imageBuffer = fileBuffer;
+	
+	console.log('Processing image, mimetype:', mimetype, 'size:', fileBuffer.length);
+	
+	// Пробуем определить формат через Sharp
+	try {
+		const metadata = await sharp(fileBuffer).metadata();
+		console.log('Sharp metadata:', { format: metadata.format, width: metadata.width, height: metadata.height });
+		
+		// Если формат HEIF/HEIC, конвертируем в JPG
+		if (metadata.format === 'heif') {
+			console.log('Detected HEIF format, converting to JPEG');
+			const converted = await heicConvert({
+				buffer: fileBuffer,
+				format: 'JPEG',
+				quality: 0.9
+			});
+			imageBuffer = Buffer.from(converted);
+			console.log('HEIC conversion successful, new size:', imageBuffer.length);
+		}
+	} catch (metadataError: any) {
+		console.log('Sharp metadata failed:', metadataError.message);
+		
+		// Если mimetype указывает на HEIC или Sharp не смог распознать, пробуем HEIC конвертацию
+		if (mimetype?.includes('heic') || mimetype?.includes('heif') || metadataError.message?.includes('unsupported')) {
+			try {
+				console.log('Attempting HEIC conversion as fallback');
+				const converted = await heicConvert({
+					buffer: fileBuffer,
+					format: 'JPEG',
+					quality: 0.9
+				});
+				imageBuffer = Buffer.from(converted);
+				console.log('Fallback HEIC conversion successful, new size:', imageBuffer.length);
+			} catch (heicError: any) {
+				console.log('HEIC conversion also failed:', heicError.message);
+				// Если и HEIC конвертация не помогла, оставляем оригинальный buffer
+			}
+		}
+	}
+
+	// Финальная обработка через Sharp
+	try {
+		const processedBuffer = await sharp(imageBuffer)
+			.rotate() // Автоповорот по EXIF
+			.jpeg({ quality: 90, mozjpeg: true })
+			.toBuffer();
+		
+		console.log('Sharp processing successful, final size:', processedBuffer.length);
+		return processedBuffer;
+	} catch (sharpError: any) {
+		console.error('Sharp final processing failed:', sharpError);
+		throw new ApiError(400, `Не удалось обработать изображение: ${sharpError.message}`);
+	}
+}
+
 router.post(
 	'/create',
 	authMiddleware,
@@ -68,30 +126,9 @@ router.post(
 			const user: User = tokenService.validateAccess(token) as User
 
 			if (req.file) {
-				try {
-					// Проверяем формат файла
-					const metadata = await sharp(req.file.buffer).metadata();
-					
-					let imageBuffer = req.file.buffer;
-					
-					// Если формат HEIF/HEIC, конвертируем в JPG
-					if (metadata.format === 'heif') {
-						imageBuffer = await heicConvert({
-							buffer: req.file.buffer,
-							format: 'JPEG',
-							quality: 0.9
-						});
-					}
-
-					const fileBuffer = await sharp(imageBuffer)
-						.rotate()
-						.toFormat('jpeg')
-						.toBuffer()
-					const imageUrl = await uploadFile(fileBuffer, `goal-${Date.now()}.jpg`)
-					data.imageUrl = imageUrl
-				} catch (error) {
-					throw new ApiError(400, 'Ошибка при обработке изображения. Пожалуйста, загрузите изображение в поддерживаемом формате (JPG, PNG, HEIC)');
-				}
+				const fileBuffer = await processImageBuffer(req.file.buffer, req.file.mimetype)
+				const imageUrl = await uploadFile(fileBuffer, `goal-${Date.now()}.jpg`)
+				data.imageUrl = imageUrl
 			} else if (!data.imageUrl) {
 				// Если файл не загружен и не указан URL изображения, используем изображение по умолчанию
 				data.imageUrl = 'https://celiscope.ru/placeholder-image.jpg'
@@ -148,25 +185,9 @@ router.post(
 			const user: User = tokenService.validateAccess(token) as User
 
 			if (req.file) {
-				try {
-					const metadata = await sharp(req.file.buffer).metadata();
-					let imageBuffer = req.file.buffer;
-					if (metadata.format === 'heif') {
-						imageBuffer = await heicConvert({
-							buffer: req.file.buffer,
-							format: 'JPEG',
-							quality: 0.9
-						});
-					}
-					const fileBuffer = await sharp(imageBuffer)
-						.rotate()
-						.toFormat('jpeg')
-						.toBuffer()
-					const imageUrl = await uploadFile(fileBuffer, `goal-${Date.now()}.jpg`)
-					data.imageUrl = imageUrl
-				} catch (error) {
-					throw new ApiError(400, 'Ошибка при обработке изображения. Пожалуйста, загрузите изображение в поддерживаемом формате (JPG, PNG, HEIC)')
-				}
+				const fileBuffer = await processImageBuffer(req.file.buffer, req.file.mimetype)
+				const imageUrl = await uploadFile(fileBuffer, `goal-${Date.now()}.jpg`)
+				data.imageUrl = imageUrl
 			} else if (!data.imageUrl) {
 				data.imageUrl = 'https://celiscope.ru/placeholder-image.jpg'
 			}
@@ -228,31 +249,14 @@ router.post(
 				throw new ApiError(400, 'Invalid goal ID')
 			}
 
-			try {
-				let imageBuffer = req.file.buffer;
-				
-				// Проверяем формат файла
-				const metadata = await sharp(req.file.buffer).metadata();
-				
-				// Если формат HEIF/HEIC, конвертируем в JPG
-				if (metadata.format === 'heif') {
-					imageBuffer = await heicConvert({
-						buffer: req.file.buffer,
-						format: 'JPEG',
-						quality: 0.9
-					});
-				}
-
-				const fileBuffer = await sharp(imageBuffer)
-					.rotate()
-					.toFormat('jpeg')
-					.toBuffer()
-				const goal = await goalService.completeGoal(user.id, goalId, fileBuffer)
-
-				res.status(200).json(goal)
-			} catch (error) {
-				throw new ApiError(400, 'Ошибка при обработке изображения. Пожалуйста, загрузите изображение в поддерживаемом формате (JPG, PNG, HEIC)');
+			if (!req.file) {
+				throw new ApiError(400, 'Необходимо загрузить изображение для закрытия цели')
 			}
+
+			const fileBuffer = await processImageBuffer(req.file.buffer, req.file.mimetype)
+			const goal = await goalService.completeGoal(user.id, goalId, fileBuffer)
+
+			res.status(200).json(goal)
 		} catch (err) {
 			next(err)
 		}
@@ -361,30 +365,9 @@ router.put(
 			if (error) throw new ApiError(400, error.message)
 
 			if (req.file) {
-				try {
-					// Проверяем формат файла
-					const metadata = await sharp(req.file.buffer).metadata();
-					
-					let imageBuffer = req.file.buffer;
-					
-					// Если формат HEIF/HEIC, конвертируем в JPG
-					if (metadata.format === 'heif') {
-						imageBuffer = await heicConvert({
-							buffer: req.file.buffer,
-							format: 'JPEG',
-							quality: 0.9
-						});
-					}
-
-					const fileBuffer = await sharp(imageBuffer)
-						.rotate()
-						.toFormat('jpeg')
-						.toBuffer()
-					const imageUrl = await uploadFile(fileBuffer, `goal-${Date.now()}.jpg`)
-					data.imageUrl = imageUrl
-				} catch (error) {
-					throw new ApiError(400, 'Ошибка при обработке изображения. Пожалуйста, загрузите изображение в поддерживаемом формате (JPG, PNG, HEIC)');
-				}
+				const fileBuffer = await processImageBuffer(req.file.buffer, req.file.mimetype)
+				const imageUrl = await uploadFile(fileBuffer, `goal-${Date.now()}.jpg`)
+				data.imageUrl = imageUrl
 			}
 
 			const goal = await goalService.updateGoal(user.id, goalId, data)

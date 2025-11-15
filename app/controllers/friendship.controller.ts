@@ -11,7 +11,10 @@ router.post(
 	authMiddleware,
 	async (req: Request, res: Response, next: NextFunction) => {
 		try {
-			const accessToken = req.headers.authorization.split(' ')[1]
+			const authHeader = req.headers.authorization
+			if (!authHeader) throw new ApiError(401, 'Не авторизован')
+			
+			const accessToken = authHeader.split(' ')[1]
 			const { id: userId } = tokenService.validateAccess(accessToken)
 			const { friendId } = req.body
 
@@ -35,7 +38,10 @@ router.delete(
 	authMiddleware,
 	async (req: Request, res: Response, next: NextFunction) => {
 		try {
-			const accessToken = req.headers.authorization.split(' ')[1]
+			const authHeader = req.headers.authorization
+			if (!authHeader) throw new ApiError(401, 'Не авторизован')
+			
+			const accessToken = authHeader.split(' ')[1]
 			const { id: userId } = tokenService.validateAccess(accessToken)
 			const { friendId } = req.body
 
@@ -56,7 +62,10 @@ router.get(
 	authMiddleware,
 	async (req: Request, res: Response, next: NextFunction) => {
 		try {
-			const accessToken = req.headers.authorization.split(' ')[1]
+			const authHeader = req.headers.authorization
+			if (!authHeader) throw new ApiError(401, 'Не авторизован')
+			
+			const accessToken = authHeader.split(' ')[1]
 			const { id: userId } = tokenService.validateAccess(accessToken)
 
 			const friends = await friendshipService.getFriends(userId)
