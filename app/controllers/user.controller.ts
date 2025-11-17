@@ -2,9 +2,9 @@ import { authMiddleware } from '@/middlewares/auth.middleware'
 import { userEditSchema } from '@/schemas/user-edit.schema'
 import { userService } from '@/services/user.service'
 import { ApiError } from '@/utils/api-error'
+import { processImageBuffer } from '@/utils/process-image'
 import { NextFunction, Request, Response, Router } from 'express'
 import multer from 'multer'
-import sharp from 'sharp'
 
 const router = Router()
 
@@ -47,7 +47,7 @@ router.put(
 				return
 			}
 
-			const fileBuffer = await sharp(req.file.buffer).toFormat('jpg').toBuffer()
+			const fileBuffer = await processImageBuffer(req.file.buffer, req.file.mimetype)
 			const userData = await userService.editUserPhoto(userId, fileBuffer)
 
 			res.status(200).json(userData)

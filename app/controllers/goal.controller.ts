@@ -7,11 +7,10 @@ import { goalService } from '@/services/goal.service'
 import { tokenService } from '@/services/token.service'
 import { aiService } from '@/services/ai.service'
 import { ApiError } from '@/utils/api-error'
+import { processImageBuffer } from '@/utils/process-image'
 import { User } from '@prisma/client'
 import { type NextFunction, type Request, type Response, Router } from 'express'
 import multer from 'multer'
-import sharp from 'sharp'
-import heicConvert from 'heic-convert'
 
 const router = Router()
 
@@ -23,63 +22,6 @@ const upload = multer({
 	}
 })
 
-// Вспомогательная функция для обработки изображений
-async function processImageBuffer(fileBuffer: Buffer, mimetype?: string): Promise<Buffer> {
-	let imageBuffer = fileBuffer;
-	
-	console.log('Processing image, mimetype:', mimetype, 'size:', fileBuffer.length);
-	
-	// Пробуем определить формат через Sharp
-	try {
-		const metadata = await sharp(fileBuffer).metadata();
-		console.log('Sharp metadata:', { format: metadata.format, width: metadata.width, height: metadata.height });
-		
-		// Если формат HEIF/HEIC, конвертируем в JPG
-		if (metadata.format === 'heif') {
-			console.log('Detected HEIF format, converting to JPEG');
-			const converted = await heicConvert({
-				buffer: fileBuffer,
-				format: 'JPEG',
-				quality: 0.9
-			});
-			imageBuffer = Buffer.from(converted);
-			console.log('HEIC conversion successful, new size:', imageBuffer.length);
-		}
-	} catch (metadataError: any) {
-		console.log('Sharp metadata failed:', metadataError.message);
-		
-		// Если mimetype указывает на HEIC или Sharp не смог распознать, пробуем HEIC конвертацию
-		if (mimetype?.includes('heic') || mimetype?.includes('heif') || metadataError.message?.includes('unsupported')) {
-			try {
-				console.log('Attempting HEIC conversion as fallback');
-				const converted = await heicConvert({
-					buffer: fileBuffer,
-					format: 'JPEG',
-					quality: 0.9
-				});
-				imageBuffer = Buffer.from(converted);
-				console.log('Fallback HEIC conversion successful, new size:', imageBuffer.length);
-			} catch (heicError: any) {
-				console.log('HEIC conversion also failed:', heicError.message);
-				// Если и HEIC конвертация не помогла, оставляем оригинальный buffer
-			}
-		}
-	}
-
-	// Финальная обработка через Sharp
-	try {
-		const processedBuffer = await sharp(imageBuffer)
-			.rotate() // Автоповорот по EXIF
-			.jpeg({ quality: 90, mozjpeg: true })
-			.toBuffer();
-		
-		console.log('Sharp processing successful, final size:', processedBuffer.length);
-		return processedBuffer;
-	} catch (sharpError: any) {
-		console.error('Sharp final processing failed:', sharpError);
-		throw new ApiError(400, `Не удалось обработать изображение: ${sharpError.message}`);
-	}
-}
 
 router.post(
 	'/create',
