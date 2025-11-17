@@ -19,18 +19,57 @@ const upload = multer({
 	storage: storage,
 	limits: {
 		fileSize: 15 * 1024 * 1024 // 15MB limit
+	},
+	fileFilter: (req, file, cb) => {
+		console.log('[multer] File filter called:', {
+			fieldname: file.fieldname,
+			originalname: file.originalname,
+			mimetype: file.mimetype
+		})
+		// Принимаем любые файлы, обработка будет в processImageBuffer
+		cb(null, true)
 	}
 })
+
+// Обработчик ошибок multer
+const handleMulterError = (err: any, req: any, res: any, next: any) => {
+	if (err instanceof multer.MulterError) {
+		console.error('[multer] Multer error:', err.message, err.code)
+		if (err.code === 'LIMIT_FILE_SIZE') {
+			return res.status(400).json({ error: 'Файл слишком большой. Максимальный размер: 15MB' })
+		}
+		return res.status(400).json({ error: `Ошибка загрузки файла: ${err.message}` })
+	}
+	if (err) {
+		console.error('[multer] Upload error:', err.message)
+		return res.status(400).json({ error: `Ошибка загрузки: ${err.message}` })
+	}
+	next()
+}
 
 
 router.post(
 	'/create',
 	authMiddleware,
 	upload.single('image'),
+	handleMulterError,
 	async (req: Request, res: Response, next: NextFunction) => {
 		try {
-			if (!req.file) {
-				console.log('No file uploaded')
+			console.log('[create] Запрос получен')
+			console.log('[create] Body keys:', Object.keys(req.body || {}))
+			console.log('[create] File present:', !!req.file)
+			
+			if (req.file) {
+				console.log('[create] File info:', {
+					fieldname: req.file.fieldname,
+					originalname: req.file.originalname,
+					mimetype: req.file.mimetype,
+					size: req.file.size,
+					bufferLength: req.file.buffer?.length,
+					firstBytes: req.file.buffer?.slice(0, 20).toString('hex')
+				})
+			} else {
+				console.log('[create] No file uploaded')
 			}
 
 			const { info } = req.body
@@ -98,6 +137,7 @@ router.post(
 	'/create-from-template',
 	authMiddleware,
 	upload.single('image'),
+	handleMulterError,
 	async (req: Request, res: Response, next: NextFunction) => {
 		try {
 			console.log('[create-from-template] Начало обработки запроса')
@@ -285,6 +325,7 @@ router.post(
 	'/:goalId/complete',
 	authMiddleware,
 	upload.single('image'),
+	handleMulterError,
 	async (req: Request, res: Response, next: NextFunction) => {
 		try {
 			const token = req.headers.authorization?.split(' ')[1]
@@ -386,6 +427,7 @@ router.put(
 	'/:goalId',
 	authMiddleware,
 	upload.single('image'),
+	handleMulterError,
 	async (req: Request, res: Response, next: NextFunction) => {
 		try {
 			const token = req.headers.authorization?.split(' ')[1]
