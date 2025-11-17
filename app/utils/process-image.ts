@@ -64,6 +64,26 @@ export async function processImageBuffer(fileBuffer: Buffer, mimetype?: string):
 	// Финальная обработка через Sharp - конвертируем все форматы в JPEG
 	// Sharp автоматически поддерживает: JPEG, PNG, WebP, GIF, SVG, TIFF, AVIF, HEIF (если скомпилирован с поддержкой)
 	try {
+		// Для JPEG файлов пробуем сначала без дополнительных опций, чтобы избежать проблем
+		if (detectedFormat === 'jpeg' || detectedFormat === 'jpg' || mimetype?.toLowerCase().includes('jpeg') || mimetype?.toLowerCase().includes('jpg')) {
+			console.log('[processImage] JPEG detected, trying simple conversion first');
+			try {
+				const processedBuffer = await sharp(imageBuffer)
+					.rotate() // Автоповорот по EXIF
+					.jpeg({ 
+						quality: 90
+					})
+					.toBuffer();
+				
+				console.log('[processImage] Sharp JPEG processing successful, final size:', processedBuffer.length);
+				return processedBuffer;
+			} catch (jpegError: any) {
+				console.log('[processImage] Simple JPEG conversion failed, trying with mozjpeg:', jpegError.message);
+				// Если простая конвертация не сработала, пробуем с mozjpeg
+			}
+		}
+		
+		// Стандартная обработка для всех форматов
 		const processedBuffer = await sharp(imageBuffer)
 			.rotate() // Автоповорот по EXIF
 			.jpeg({ 
@@ -77,6 +97,19 @@ export async function processImageBuffer(fileBuffer: Buffer, mimetype?: string):
 		return processedBuffer;
 	} catch (sharpError: any) {
 		console.error('[processImage] Sharp final processing failed:', sharpError);
+		console.error('[processImage] Error details:', {
+			message: sharpError.message,
+			code: sharpError.code,
+			mimetype,
+			detectedFormat,
+			bufferSize: imageBuffer.length
+		});
+		
+		// Если это JPEG и Sharp не смог обработать, пробуем вернуть как есть (если размер разумный)
+		if ((detectedFormat === 'jpeg' || detectedFormat === 'jpg' || mimetype?.toLowerCase().includes('jpeg')) && imageBuffer.length < 10 * 1024 * 1024) {
+			console.log('[processImage] JPEG processing failed, returning original buffer as fallback');
+			return imageBuffer;
+		}
 		
 		// Если Sharp не смог обработать, пробуем определить формат по mimetype и дать более понятную ошибку
 		const supportedFormats = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif', 'image/heic', 'image/heif', 'image/tiff', 'image/avif'];
@@ -86,7 +119,7 @@ export async function processImageBuffer(fileBuffer: Buffer, mimetype?: string):
 			throw new ApiError(400, `Неподдерживаемый формат изображения: ${mimetype}. Поддерживаются: JPEG, PNG, WebP, HEIC, HEIF, GIF, TIFF, AVIF`);
 		}
 		
-		throw new ApiError(400, `Не удалось обработать изображение: ${sharpError.message}`);
+		throw new ApiError(400, `Не удалось обработать изображение: ${sharpError.message}. Проверьте формат и размер файла.`);
 	}
 }
 

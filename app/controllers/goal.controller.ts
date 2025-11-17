@@ -68,9 +68,18 @@ router.post(
 			const user: User = tokenService.validateAccess(token) as User
 
 			if (req.file) {
-				const fileBuffer = await processImageBuffer(req.file.buffer, req.file.mimetype)
-				const imageUrl = await uploadFile(fileBuffer, `goal-${Date.now()}.jpg`)
-				data.imageUrl = imageUrl
+				console.log('[create] Обработка изображения, mimetype:', req.file.mimetype, 'size:', req.file.size)
+				try {
+					const fileBuffer = await processImageBuffer(req.file.buffer, req.file.mimetype)
+					console.log('[create] Изображение обработано, размер буфера:', fileBuffer.length)
+					const imageUrl = await uploadFile(fileBuffer, `goal-${Date.now()}.jpg`)
+					console.log('[create] Изображение загружено в S3, URL:', imageUrl)
+					data.imageUrl = imageUrl
+				} catch (imageError: any) {
+					console.error('[create] ERROR: Ошибка обработки изображения:', imageError.message)
+					console.error('[create] Image error stack:', imageError.stack)
+					throw new ApiError(400, `Ошибка при обработке изображения: ${imageError.message}`)
+				}
 			} else if (!data.imageUrl) {
 				// Если файл не загружен и не указан URL изображения, используем изображение по умолчанию
 				data.imageUrl = 'https://celiscope.ru/placeholder-image.jpg'
@@ -290,7 +299,17 @@ router.post(
 				throw new ApiError(400, 'Необходимо загрузить изображение для закрытия цели')
 			}
 
-			const fileBuffer = await processImageBuffer(req.file.buffer, req.file.mimetype)
+			console.log('[complete] Обработка изображения, mimetype:', req.file.mimetype, 'size:', req.file.size)
+			let fileBuffer: Buffer
+			try {
+				fileBuffer = await processImageBuffer(req.file.buffer, req.file.mimetype)
+				console.log('[complete] Изображение обработано, размер буфера:', fileBuffer.length)
+			} catch (imageError: any) {
+				console.error('[complete] ERROR: Ошибка обработки изображения:', imageError.message)
+				console.error('[complete] Image error stack:', imageError.stack)
+				throw new ApiError(400, `Ошибка при обработке изображения: ${imageError.message}`)
+			}
+			
 			const goal = await goalService.completeGoal(user.id, goalId, fileBuffer)
 
 			res.status(200).json(goal)
@@ -402,9 +421,18 @@ router.put(
 			if (error) throw new ApiError(400, error.message)
 
 			if (req.file) {
-				const fileBuffer = await processImageBuffer(req.file.buffer, req.file.mimetype)
-				const imageUrl = await uploadFile(fileBuffer, `goal-${Date.now()}.jpg`)
-				data.imageUrl = imageUrl
+				console.log('[update] Обработка изображения, mimetype:', req.file.mimetype, 'size:', req.file.size)
+				try {
+					const fileBuffer = await processImageBuffer(req.file.buffer, req.file.mimetype)
+					console.log('[update] Изображение обработано, размер буфера:', fileBuffer.length)
+					const imageUrl = await uploadFile(fileBuffer, `goal-${Date.now()}.jpg`)
+					console.log('[update] Изображение загружено в S3, URL:', imageUrl)
+					data.imageUrl = imageUrl
+				} catch (imageError: any) {
+					console.error('[update] ERROR: Ошибка обработки изображения:', imageError.message)
+					console.error('[update] Image error stack:', imageError.stack)
+					throw new ApiError(400, `Ошибка при обработке изображения: ${imageError.message}`)
+				}
 			}
 
 			const goal = await goalService.updateGoal(user.id, goalId, data)
