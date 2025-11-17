@@ -36,13 +36,23 @@ const handleMulterError = (err: any, req: any, res: any, next: any) => {
 	if (err instanceof multer.MulterError) {
 		console.error('[multer] Multer error:', err.message, err.code)
 		if (err.code === 'LIMIT_FILE_SIZE') {
-			return res.status(400).json({ error: 'Файл слишком большой. Максимальный размер: 15MB' })
+			return res.status(400).json({ 
+				error: 'Файл слишком большой. Максимальный размер: 15MB',
+				status: 400
+			})
 		}
-		return res.status(400).json({ error: `Ошибка загрузки файла: ${err.message}` })
+		return res.status(400).json({ 
+			error: `Ошибка загрузки файла: ${err.message}`,
+			status: 400
+		})
 	}
 	if (err) {
 		console.error('[multer] Upload error:', err.message)
-		return res.status(400).json({ error: `Ошибка загрузки: ${err.message}` })
+		console.error('[multer] Upload error stack:', err.stack)
+		return res.status(400).json({ 
+			error: `Ошибка загрузки: ${err.message}`,
+			status: 400
+		})
 	}
 	next()
 }
@@ -74,7 +84,19 @@ router.post(
 
 			const { info } = req.body
 
-			const parsed = JSON.parse(info)
+			if (!info) {
+				console.error('[create] ERROR: info отсутствует в body')
+				throw new ApiError(400, 'Поле info обязательно')
+			}
+
+			let parsed
+			try {
+				parsed = JSON.parse(info)
+			} catch (parseError: any) {
+				console.error('[create] ERROR: JSON parse failed:', parseError.message)
+				console.error('[create] Info content:', info?.substring(0, 200))
+				throw new ApiError(400, `Ошибка парсинга JSON: ${parseError.message}`)
+			}
 			const isFromTemplate = parsed?.source === 'template'
 			const schema = isFromTemplate ? goalCreateFromTemplateSchema : goalCreateSchema
 			const { value: data, error } = schema.validate(

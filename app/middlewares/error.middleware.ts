@@ -13,13 +13,27 @@ export function errorMiddleware(
 		}
 
 		if (err instanceof ApiError) {
-			res.status(err.status).json({ message: err.message })
+			console.error('[ErrorMiddleware] ApiError:', err.status, err.message)
+			res.status(err.status).json({ 
+				error: err.message,
+				status: err.status
+			})
+			return
 		}
 
-		console.log(err)
+		// Логируем полную ошибку для отладки
+		console.error('[ErrorMiddleware] Unexpected error:', err)
+		if (err instanceof Error) {
+			console.error('[ErrorMiddleware] Error stack:', err.stack)
+		}
 
-		res.status(500).json({ message: 'Случилась непредвиденная ошибка' })
-	} catch {
+		res.status(500).json({ 
+			error: 'Случилась непредвиденная ошибка',
+			message: err instanceof Error ? err.message : 'Unknown error',
+			status: 500
+		})
+	} catch (error) {
+		console.error('[ErrorMiddleware] Error in error handler:', error)
 		return next()
 	}
 }

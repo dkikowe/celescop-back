@@ -46,14 +46,17 @@ function detectFileFormat(buffer: Buffer): string | null {
 export async function processImageBuffer(fileBuffer: Buffer, mimetype?: string): Promise<Buffer> {
 	let imageBuffer = fileBuffer;
 	
-	console.log('[processImage] Processing image, mimetype:', mimetype, 'size:', fileBuffer.length);
+	console.log('[processImage] ===== Начало обработки изображения =====');
+	console.log('[processImage] Mimetype:', mimetype);
+	console.log('[processImage] Buffer size:', fileBuffer.length, 'bytes');
+	console.log('[processImage] First 20 bytes (hex):', fileBuffer.slice(0, 20).toString('hex'));
 	
 	// Определяем реальный формат по магическим байтам
 	const realFormat = detectFileFormat(fileBuffer);
 	console.log('[processImage] Real format detected:', realFormat);
 	
 	if (realFormat && mimetype && !mimetype.toLowerCase().includes(realFormat)) {
-		console.log('[processImage] WARNING: MIME type mismatch! MIME:', mimetype, 'Real format:', realFormat);
+		console.warn('[processImage] ⚠️ WARNING: MIME type mismatch! MIME:', mimetype, 'Real format:', realFormat);
 	}
 	
 	// Пробуем определить формат через Sharp
@@ -134,15 +137,20 @@ export async function processImageBuffer(fileBuffer: Buffer, mimetype?: string):
 			})
 			.toBuffer();
 		
-		console.log('[processImage] Sharp processing successful, final size:', processedBuffer.length);
+		console.log('[processImage] ✅ Sharp processing successful, final size:', processedBuffer.length);
+		console.log('[processImage] ===== Обработка изображения завершена успешно =====');
 		return processedBuffer;
 	} catch (sharpError: any) {
-		console.error('[processImage] Sharp final processing failed:', sharpError);
+		console.error('[processImage] ❌ Sharp final processing failed');
+		console.error('[processImage] Error message:', sharpError.message);
+		console.error('[processImage] Error code:', sharpError.code);
+		console.error('[processImage] Error stack:', sharpError.stack);
 		console.error('[processImage] Error details:', {
 			message: sharpError.message,
 			code: sharpError.code,
 			mimetype,
 			detectedFormat,
+			realFormat,
 			bufferSize: imageBuffer.length
 		});
 		
